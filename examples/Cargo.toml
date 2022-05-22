@@ -9,7 +9,7 @@ description = "A suite examples for nannou, the creative coding framework."
 readme = "README.md"
 keywords = ["creative", "sketch", "graphics", "audio", "example"]
 license = "MIT"
-repository = "https://github.com/nannou-org/nannou.git"
+repository = "git@github.com:nannou-org/nannou.git"
 homepage = "https://github.com/nannou-org/nannou"
 edition = "2018"
 
@@ -29,6 +29,7 @@ time_calc = { version= "0.13", features = ["serde"] }
 walkdir = "2"
 hound = "3.4.0"
 ringbuf = "0.2.2"
+winit = "0.26.1"
 
 # Audio
 [[example]]

@@ -1,4 +1,5 @@
 use nannou::prelude::*;
+use winit::event::VirtualKeyCode;
 
 // Every rust program has to have a main function which gets called when the program is run.
 // In the main function, we build the nannou app and run it.
@@ -30,7 +31,14 @@ fn event(_app: &App, _model: &mut Model, event: WindowEvent) {
     match event {
         // Keyboard events
         KeyPressed(_key) => {}
-        KeyReleased(_key) => {}
+        KeyReleased(_key) => {
+            match _key {
+                VirtualKeyCode::Key1 => {println!("Fuck! 1")},
+                VirtualKeyCode::Key2 => {println!("Fuck! 2")},
+                _ => {}
+            }
+            println!("Key code: {:?}", _key);
+        }
         ReceivedCharacter(_char) => {}
 
         // Mouse events
