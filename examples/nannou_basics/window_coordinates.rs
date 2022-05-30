@@ -7,12 +7,12 @@ fn main() {
 struct Model {
     t: Point2,
     t_start: Point2,
-    t_origin: Point2,
+    rect_t: Point2,
     rot: f32,
     rot_start: f32,
-    rot_origin: f32,
     t_set: bool,
     r_set: bool,
+    moving: bool,
     scale: f32,
 }
 
@@ -21,6 +21,7 @@ fn model(app: &App) -> Model {
         .new_window()
         .mouse_pressed(mouse_pressed)
         .mouse_released(mouse_released)
+        .key_released(key_released)
         .mouse_moved(mouse_moved)
         .mouse_wheel(mouse_wheel)
         .view(view)
@@ -30,12 +31,12 @@ fn model(app: &App) -> Model {
     Model { 
         t: pt2(0., 0.), 
         t_start: pt2(0., 0.), 
-        t_origin: pt2(0., 0.), 
+        rect_t: pt2(0., 0.),
         rot: 0.,
         rot_start: 0.,
-        rot_origin: 0.,
         t_set: true,
         r_set: true,
+        moving: false,
         scale: 1.0
     }
 }
@@ -54,14 +55,15 @@ fn mouse_pressed(_app: &App, _model: &mut Model, _button: MouseButton) {
     match _button {
         MouseButton::Middle => {
             _model.t_start = point;
-            _model.t_origin = _model.t;
             _model.t_set = false;
         },
         MouseButton::Left => {
-            _model.t_origin = _model.t;
             _model.rot_start = point.y.atan2(point.x);
-            _model.rot_origin = _model.rot;
             _model.r_set = false;
+        },
+        MouseButton::Right => {
+            _model.t_start = point;
+            _model.moving = true;
         },
         _ => {}
     }
@@ -74,25 +76,35 @@ fn get_rotation(angle: &f32) -> Mat2 {
     Mat2::from_cols_array(&[cosa, sina, -sina, cosa])
 }
 
+fn key_released(_app: &App, _model: &mut Model, _key: Key) {
+    match _key {
+        // _model.scrn and _model.obj are mutex to be true
+        Key::Space => {
+            _model.t = pt2(0., 0.);
+            _model.rect_t = pt2(0., 0.);
+            _model.rot = 0.;
+        },
+        _ => {},
+    }
+}
+
 // mouse release will determine the initial angle
 fn mouse_released(_app: &App, _model: &mut Model, _button: MouseButton) {
+    let point = _app.mouse.position();
     match _button {
         MouseButton::Middle => {
-            _model.t = _app.mouse.position() - _model.t_start + _model.t_origin;
+            _model.t += point - _model.t_start;
             _model.t_set = true;
         },
         MouseButton::Left => {
-            let point = _app.mouse.position();
             let delta_angle = good_angle(point.y.atan2(point.x) - _model.rot_start);
-            _model.rot = good_angle(delta_angle + _model.rot_origin);
+            _model.rot = good_angle(delta_angle + _model.rot);
             _model.r_set = true;
-            _model.t = get_rotation(&delta_angle).mul_vec2(_model.t_origin);
+            _model.t = get_rotation(&delta_angle).mul_vec2(_model.t);
         },
         MouseButton::Right => {
-            _model.t = pt2(0., 0.);
-            _model.rot = 0.;
-            _model.t_origin = pt2(0., 0.);
-            _model.rot_origin = 0.;
+            _model.rect_t += get_rotation(&-_model.rot).mul_vec2(point - _model.t_start) / _model.scale;
+            _model.moving = false;
         },
         _ => {}
     }
@@ -102,17 +114,32 @@ fn mouse_released(_app: &App, _model: &mut Model, _button: MouseButton) {
 fn mouse_moved(_app: &App, _model: &mut Model, _pos: Point2) {
     let point = _app.mouse.position();
     if _model.t_set == false {
-        _model.t = point - _model.t_start + _model.t_origin;
+        _model.t += point - _model.t_start;
+        _model.t_start = point;
+    } else if _model.moving == true {
+        _model.rect_t += get_rotation(&-_model.rot).mul_vec2(point - _model.t_start) / _model.scale;
+        _model.t_start = point;
     }
     if _model.r_set == false {
-        let delta_angle = good_angle(point.y.atan2(point.x) - _model.rot_start);
-        _model.rot = good_angle(delta_angle + _model.rot_origin);
-        _model.t = get_rotation(&delta_angle).mul_vec2(_model.t_origin);
+        let current_angle = point.y.atan2(point.x);
+        let delta_angle = good_angle(current_angle - _model.rot_start);
+        _model.rot_start = current_angle;
+        _model.rot = good_angle(delta_angle + _model.rot);
+        _model.t = get_rotation(&delta_angle).mul_vec2(_model.t);
     }
 }
 
 // change velocity
-fn mouse_wheel(_app: &App, _model: &mut Model, _dt: MouseScrollDelta, _phase: TouchPhase) {}
+fn mouse_wheel(_app: &App, _model: &mut Model, _dt: MouseScrollDelta, _phase: TouchPhase) {
+    match _dt {
+        MouseScrollDelta::LineDelta(_, iy) => {
+            _model.scale = (_model.scale + iy * 0.05).min(2.).max(0.5);
+        },
+        _ => {
+            println!("Mouse scroll data returned type: PixelDelta, which is not implemented.");
+        }
+    }
+}
 
 fn update(_app: &App, _model: &mut Model, _: Update) {}
 
@@ -122,15 +149,15 @@ fn view(app: &App, _model: &Model, frame: Frame) {
     draw = draw
         .x_y(_model.t.x, _model.t.y)
         .rotate(_model.rot)
-        .scale_x(1.0)
-        .scale_y(1.0);
+        .scale_x(_model.scale)
+        .scale_y(_model.scale);
     let window = app.main_window();
     let win = window.rect();
     draw.background().rgb(0.11, 0.12, 0.13);
 
     // 100-step and 10-step grids.
-    draw_grid(&draw, &win, 100.0, 1.0);
-    draw_grid(&draw, &win, 25.0, 0.5);
+    draw_grid(&draw, &win, 100.0, 1.0, 0.02);
+    draw_grid(&draw, &win, 25.0, 0.5, 0.02);
 
     // Crosshair.
     let crosshair_color = gray(0.5);
@@ -227,22 +254,29 @@ fn view(app: &App, _model: &Model, frame: Frame) {
         
         // Mouse position text.
 
-        // mouse = R.mul_vec2(mouse);
+        let original_mouse = app.mouse.position();
+        let mut mouse = original_mouse;
+        mouse -= _model.t;
+        let rotation_inv= get_rotation(&-_model.rot);
+        mouse = rotation_inv.mul_vec2(mouse);
+        mouse /= _model.scale;
 
-        let mouse = app.mouse.position();
-        
         draw.ellipse().wh([5.0; 2].into()).xy(mouse);
-        let pos = format!("[{:.1}, {:.1}]", mouse.x, mouse.y);
+        let pos = format!("[{:.1}, {:.1}, {:.1}, {:.1}]", mouse.x, mouse.y, original_mouse.x, original_mouse.y);
         draw.text(&pos)
             .xy(mouse + vec2(0.0, 20.0))
             .font_size(14)
             .color(WHITE).rotate(-_model.rot);
+
+        draw.rect()
+            .x_y(_model.rect_t.x, _model.rect_t.y)
+            .w(100.).h(100.).color(RED);
     }
 
     draw.to_frame(app, &frame).unwrap();
 }
 
-fn draw_grid(draw: &Draw, win: &Rect, step: f32, weight: f32) {
+fn draw_grid(draw: &Draw, win: &Rect, step: f32, weight: f32, alpha: f32) {
     let step_by = || (0..).map(|i| i as f32 * step);
     let r_iter = step_by().take_while(|&f| f < win.right());
     let l_iter = step_by().map(|f| -f).take_while(|&f| f > win.left());
@@ -250,6 +284,7 @@ fn draw_grid(draw: &Draw, win: &Rect, step: f32, weight: f32) {
     for x in x_iter {
         draw.line()
             .weight(weight)
+            .rgba(1., 1., 1., alpha)
             .points(pt2(x, win.bottom()), pt2(x, win.top()));
     }
     let t_iter = step_by().take_while(|&f| f < win.top());
@@ -258,6 +293,7 @@ fn draw_grid(draw: &Draw, win: &Rect, step: f32, weight: f32) {
     for y in y_iter {
         draw.line()
             .weight(weight)
+            .rgba(1., 1., 1., alpha)
             .points(pt2(win.left(), y), pt2(win.right(), y));
     }
 }
